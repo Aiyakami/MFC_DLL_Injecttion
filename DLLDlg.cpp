@@ -396,7 +396,103 @@ PCHAR CDLLDlg::GetDLLPath() {
 	return utf8Str;
 }
 
-//远程线程注入的实现
+//远程线程注入声明
+BOOL RemoteThreadInject(DWORD dwPID, char* pszDllPath);
+
+//消息钩子关键函数声明
+DWORD getThreadID(DWORD ulTargetProcessID);
+BOOL InjectDllBySetWindowsHook(DWORD ulTargetProcessID, PCHAR ptr);
+
+//消息钩子注入定义
+BOOL MessageHookInject(DWORD pid, PCHAR ptr)
+{
+	//开始消息钩子注入
+	if (!InjectDllBySetWindowsHook(pid, ptr))
+	{
+		cout << "Set Hook Failed!\r\n" << endl;
+		return FALSE;
+	}
+	cout << "Inject Success!\r\n" << endl;
+	return TRUE;
+}
+
+
+//注入  远程线程注入 PID DLL路径
+void CDLLDlg::OnBnClickedButton8()//类的命名空间
+{
+	//获取pid
+	DWORD pid = GetCurrentPID();
+	//DLL路径
+	PCHAR ptr = GetDLLPath(); //char*  pchar
+	//获取注入方式的选择
+	//int method = GetInjectMethod();
+	//注入
+	//int method = 1;
+	//switch (method)
+	//{
+	//case 1:
+	//	RemoteThreadInject(pid, ptr);
+	//default:
+	//	break;
+	//}
+	int nRadioID = GetCheckedRadioButton(IDC_RADIO1, IDC_RADIO7);
+	// 使用switch语句根据选择调用不同的函数
+	switch (nRadioID)
+	{
+	case IDC_RADIO1:
+		RemoteThreadInject(pid, ptr);
+		break;
+
+	case IDC_RADIO2:
+		MessageHookInject(pid, ptr);
+		break;
+
+	case IDC_RADIO3:
+		//注入方式三
+		break;
+
+	case IDC_RADIO4:
+		//注入方式四
+		break;
+
+	case IDC_RADIO5:
+		//注入方式五
+		break;
+
+	case IDC_RADIO6:
+		//注入方式六
+		break;
+
+	case IDC_RADIO7:
+		//注入方式七
+		break;
+
+	default:
+		break;
+	}
+
+}
+
+
+void CDLLDlg::OnBnClickedButton6()
+{
+	CString selectedFile;
+	// 构造文件对话框对象
+	CFileDialog fileDlg(TRUE);
+
+	// 设置对话框的标题和过滤器
+	fileDlg.m_ofn.lpstrTitle = _T("选择文件");
+	fileDlg.m_ofn.lpstrFilter = _T("所有文件 (*.*)|*.*||");
+
+	// 显示文件对话框，让用户选择文件
+	if (fileDlg.DoModal() == IDOK) {
+		selectedFile = fileDlg.GetPathName(); // 获取用户选择的文件路径
+		//写入控件中
+		SetDlgItemText(IDC_EDIT2, selectedFile);
+	}
+}
+
+//远程线程注入实现
 BOOL RemoteThreadInject(DWORD dwPID, char* pszDllPath) {
 	HANDLE hProcess, hThread;
 	LPVOID pRemoteBuf;
@@ -448,77 +544,99 @@ BOOL RemoteThreadInject(DWORD dwPID, char* pszDllPath) {
 }
 
 
-//注入  远程线程注入 PID DLL路径
-void CDLLDlg::OnBnClickedButton8()//类的命名空间
+//消息钩子注入关键函数实现
+//获取线程id
+DWORD getThreadID(DWORD ulTargetProcessID)
 {
-	//获取pid
-	DWORD pid = GetCurrentPID();
-	//DLL路径
-	PCHAR ptr = GetDLLPath(); //char*  pchar
-	//获取注入方式的选择
-	//int method = GetInjectMethod();
-	//注入
-	//int method = 1;
-	//switch (method)
-	//{
-	//case 1:
-	//	RemoteThreadInject(pid, ptr);
-	//default:
-	//	break;
-	//}
-	int nRadioID = GetCheckedRadioButton(IDC_RADIO1, IDC_RADIO7);
-	// 使用switch语句根据选择调用不同的函数
-	switch (nRadioID)
+	//获取32位线程快照
+	HANDLE Handle = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+	if (Handle != INVALID_HANDLE_VALUE)
 	{
-	case IDC_RADIO1:
-		//注入方式一
-		break;
-
-	case IDC_RADIO2:
-		//注入方式二
-		break;
-
-	case IDC_RADIO3:
-		//注入方式三
-		break;
-
-	case IDC_RADIO4:
-		//注入方式四
-		break;
-
-	case IDC_RADIO5:
-		//注入方式五
-		break;
-
-	case IDC_RADIO6:
-		//注入方式六
-		break;
-
-	case IDC_RADIO7:
-		//注入方式七
-		break;
-
-	default:
-		break;
+		THREADENTRY32 te;
+		//初始化结构体
+		te.dwSize = sizeof(te);
+		//枚举遍历线程直至找到目标线程
+		if (Thread32First(Handle, &te))
+		{
+			do
+			{
+				//确保THREADENTRY32结构体的dwSize成员值足够大，以包含th32OwnerProcessID字段
+				if (te.dwSize >= FIELD_OFFSET(THREADENTRY32, th32OwnerProcessID) + sizeof(te.th32OwnerProcessID))
+				{
+					//检查线程是否属于目标进程
+					if (te.th32OwnerProcessID == ulTargetProcessID)
+					{
+						//获取线程句柄并返回线程ID
+						HANDLE hThread = OpenThread(READ_CONTROL, FALSE, te.th32ThreadID);
+						//获取句柄可以确保线程有效
+						if (!hThread)
+						{
+							printf("Couldn't get thread handle\r\n");
+						}
+						else
+						{
+							//返回线程ID
+							return te.th32ThreadID;
+						}
+					}
+				}
+				//获取下一个线程
+			} while (Thread32Next(Handle, &te));
+		}
 	}
-
+	CloseHandle(Handle);
+	return (DWORD)0;
 }
 
 
-void CDLLDlg::OnBnClickedButton6()
+//消息钩子注入关键函数定义
+//通过SetWindowsHookEx()设置消息钩子实现注入
+BOOL InjectDllBySetWindowsHook(DWORD ulTargetProcessID, PCHAR ptr)
 {
-	CString selectedFile;
-	// 构造文件对话框对象
-	CFileDialog fileDlg(TRUE);
-
-	// 设置对话框的标题和过滤器
-	fileDlg.m_ofn.lpstrTitle = _T("选择文件");
-	fileDlg.m_ofn.lpstrFilter = _T("所有文件 (*.*)|*.*||");
-
-	// 显示文件对话框，让用户选择文件
-	if (fileDlg.DoModal() == IDOK) {
-		selectedFile = fileDlg.GetPathName(); // 获取用户选择的文件路径
-		//写入控件中
-		SetDlgItemText(IDC_EDIT2, selectedFile);
+	HANDLE  TargetProcessHandle = NULL;
+	//初始化线程句柄
+	TargetProcessHandle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, ulTargetProcessID);
+	if (NULL == TargetProcessHandle)
+	{
+		printf("Couldn't get Target Process Handle\r\n");
+		return FALSE;
 	}
+
+	//加载dll
+	HMODULE DllModule = LoadLibrary((LPCWSTR)ptr);
+	if (DllModule == NULL)
+	{
+		printf("can't find dll\r\n");
+		return FALSE;
+	}
+
+	//获取dll中导出的函数 "MyMessageProcess"的地址
+	HOOKPROC   Sub_1Address = NULL;
+	Sub_1Address = (HOOKPROC)GetProcAddress(DllModule, "MyMessageProcess");
+	if (Sub_1Address == NULL)
+	{
+		printf("can't found MyMessageProcess");
+		return FALSE;
+	}
+
+	//获取线程id
+	DWORD ThreadID = getThreadID(ulTargetProcessID);
+
+	//设置键盘钩子监视键盘事件
+	HHOOK Handle = SetWindowsHookEx(WH_KEYBOARD,
+		Sub_1Address, DllModule, ThreadID);
+
+	if (Handle == NULL)
+	{
+		printf("hook failed\r\n");
+		return FALSE;
+	}
+	printf("hook success\r\n");
+	getchar();
+
+	//释放钩子
+	UnhookWindowsHookEx(Handle);
+
+	//释放dll模块
+	FreeLibrary(DllModule);
 }
